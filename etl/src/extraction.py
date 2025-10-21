@@ -146,19 +146,13 @@ def load_zaklady_data(raw_data_path):
             try:
                 df_zaklad = pd.read_csv(file_path)
                 print(f"  Loaded {filename}: {len(df_zaklad)} records")
-
-                #pomyslec czy tylko nazwisko i imie czy calosc
-                #df_zaklad['Nazwisko_Clean'] = df_zaklad['Nazwisko'].str.strip().str.title()
                 df_zaklad['Nazwisko_Clean'] = df_zaklad['Nazwisko'].str.strip()
                 df_zaklad['Imie_Clean'] = df_zaklad['Imiona'].str.strip()
-                #df_zaklad['Prowadzacy_Full'] = (df_zaklad['Tytuł'].fillna('').astype(str).str.strip() + ' ' + df_zaklad['Nazwisko'].str.strip() + ' ' + df_zaklad['Imiona'].fillna('').astype(str).str.strip()).str.strip()
-                #df_zaklad['Prowadzacy'] = (df_zaklad['Nazwisko_Clean'] + ' ' + df_zaklad['Imie_Clean']).str.strip()
-    
+                
                 for _, row in df_zaklad.iterrows():
                     nazwisko = row['Nazwisko_Clean'].lower()
                     imie = row['Imie_Clean'].lower()
-                    #prowadzacy_key = row['Prowadzacy_Full'].lower()
-                    #pracownicy_zaklady[prowadzacy_key] = zaklad_skrot
+
                     if nazwisko and imie:
                         prowadzacy_key = f"{nazwisko} {imie}"
 
@@ -168,7 +162,7 @@ def load_zaklady_data(raw_data_path):
                                 print(f"  CONFLICT: '{prowadzacy_key}' exists in {existing_zaklad} and {zaklad_skrot}")
                         else:
                             pracownicy_zaklady[prowadzacy_key] = zaklad_skrot
-                            # print(f"Added: '{prowadzacy_key}' -> {zaklad_skrot}")
+
 
             except Exception as e:
                 print(f"  Error loading {filename}: {e}")

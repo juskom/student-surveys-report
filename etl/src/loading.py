@@ -15,8 +15,7 @@ def save_all_dimensions(dimensions, output_path):
                 file_path = os.path.join(transformed_data_path, f"{dimension_name}.csv")
 
                 df.to_csv(file_path, index=False, encoding='utf-8')
-                
-                # print(f"Saved {dimension_name}: {len(df)} records -> {file_path}")
+
                 saved_count += 1
                 
             elif df is not None and df.empty:
@@ -123,7 +122,6 @@ def save_single_dimension(df, dimension_name, output_path):
         
         df.to_csv(file_path, index=False, encoding='utf-8')
         
-        # print(f"Saved {dimension_name}: {len(df)} records")
         return True
         
     except Exception as e:
@@ -139,7 +137,6 @@ def load_dimension(dimension_name, input_path):
             return None
         
         df = pd.read_csv(file_path, encoding='utf-8')
-        # print(f"Loaded {dimension_name}: {len(df)} records")
         
         return df
         

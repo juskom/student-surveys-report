@@ -31,7 +31,6 @@ def build_dim_prowadzacy(prowadzacy_data, pracownicy_zaklady, dim_struktura):
         return pd.DataFrame()
 
     df_all_prow = pd.DataFrame(prowadzacy_data)
-    print(f"  Total instructor records before dedup: {len(df_all_prow)}")
     
     df_all_prow = df_all_prow.drop_duplicates()
     print(f"  Unique instructor records: {len(df_all_prow)}")
@@ -59,9 +58,7 @@ def assign_zaklady_to_prowadzacy(dim_prowadzacy, pracownicy_zaklady):
     for idx, row in dim_prowadzacy.iterrows():
         nazwisko = str(row['Nazwisko']).strip().lower() if pd.notna(row['Nazwisko']) else ''
         imie = str(row['Imiona']).strip().lower() if pd.notna(row['Imiona']) else ''
-        #imie_key = str(row['Imiona']).strip().lower() if pd.notna(row['Imiona']) else ''
-        #prowadzacy_key = str(row['Prowadzący']).strip().lower() if pd.notna(row['Prowadzący']) else ''
-        
+    
         zaklad_found = None
 
         if nazwisko and imie:
@@ -71,21 +68,11 @@ def assign_zaklady_to_prowadzacy(dim_prowadzacy, pracownicy_zaklady):
                 dim_prowadzacy.at[idx, 'Zakład'] = zaklad_found
                 matched_count += 1
 
-                # print(f"Matched by full name: {key} -> {zaklad_found}")
             else:
                 dim_prowadzacy.at[idx, 'Zakład'] = 'brak'
                 print(f"No match by full name: {key}")
 
-
-        # if zaklad_found:
-        #     dim_prowadzacy.at[idx, 'ZakladSkrot'] = zaklad_found
-        #     struktura_match = dim_struktura[dim_struktura['ZakladSkrot'] == zaklad_found]
-        #     if not struktura_match.empty:
-        #         dim_prowadzacy.at[idx, 'StrukturaID'] = struktura_match.iloc[0]['StrukturaID']
-        #     matched_count += 1
-    
     print(f"  Matched {matched_count}/{len(dim_prowadzacy)} prowadzacy to zaklady")
-    print(f"  Unmatched prowadzacy: {len(dim_prowadzacy) - matched_count}")
 
     return dim_prowadzacy
 
@@ -151,13 +138,7 @@ def build_dim_przedmiot(przedmiot_data):
     
     df_all_przedmiot = df_all_przedmiot.reset_index(drop=True)
     df_all_przedmiot["PrzedmiotID"] = range(1, len(df_all_przedmiot) + 1)
-    
-    # dim_przedmiot = df_all_przedmiot[[
-    #     "PrzedmiotID", "Nazwa przedmiotu", "Kod zajęć", 
-    #     "Kod wydziału", "Kod kierunku", "Kod trybu", "Kod przedmiotu",
-    #     "Wydział", "Kierunek", "Stopień", "Tryb", "Język", "Semestr"
-    # ]].copy()
-
+ 
     dim_przedmiot = df_all_przedmiot[[
         "PrzedmiotID", "Nazwa przedmiotu", "Dawca", "Kod zajęć", 
         "Wydział", "Kierunek", "Stopień", "Tryb", "Język", "Semestr"
@@ -241,16 +222,11 @@ def build_dim_ankiety(raw_files_data, dim_prowadzacy, dim_przedmiot, dim_semestr
     ankieta_records = []
     ankieta_id_counter = 1
 
-    print("  📅 Available semesters in dim_semestr:")
-    for _, row in dim_semestr.iterrows():
-        print(f"     SemestrID {row['SemestrID']}: {row['Cykl']}")
-    
-
     for file_data in raw_files_data:
         semester = file_data['metadata']['semester']
         semester_match = dim_semestr[dim_semestr['Cykl'] == semester]
         if semester_match.empty:
-            print(f"  ⚠️ Warning: Semester '{semester}' from file not found in dim_semestr!")
+            print(f" Warning: Semester '{semester}' from file not found in dim_semestr!")
         semester_id = semester_match.iloc[0]['SemestrID']
 
         df_subset = file_data['df_subset'].dropna(how='all')
@@ -263,9 +239,7 @@ def build_dim_ankiety(raw_files_data, dim_prowadzacy, dim_przedmiot, dim_semestr
         if df_with_ids.empty:
             continue
 
-        
         df_with_ids = df_with_ids.dropna(subset=['ProwadzacyID', 'PrzedmiotID'])
-    
         
         df_ankieta = pd.DataFrame({
             'AnkietaID': range(ankieta_id_counter, ankieta_id_counter + len(df_with_ids)),
@@ -291,15 +265,7 @@ def build_dim_ankiety(raw_files_data, dim_prowadzacy, dim_przedmiot, dim_semestr
     
     if ankieta_records:
         dim_ankiety = pd.concat(ankieta_records, ignore_index=True)
-        #dim_ankiety = dim_ankiety.drop_duplicates(subset=['ProwadzacyID', 'PrzedmiotID', 'SemestrID', 'Rodzaj zajęć'])
-        # dim_ankiety.insert(0, 'AnkietaID', range(1, len(dim_ankiety)+1))
-        print(f"dim_ankiety created with {len(dim_ankiety)} records")
-
-        semester_counts = dim_ankiety['SemestrID'].value_counts().sort_index()
-        print("  📊 Records per Semester:")
-        for semester, count in semester_counts.items():
-            print(f"     {semester}: {count} records")
-        
+        print(f"dim_ankiety created with {len(dim_ankiety)} records")     
 
         return dim_ankiety
     else:
@@ -344,22 +310,18 @@ def build_fact_ankiety(raw_files_data, dim_prowadzacy, dim_przedmiot, dim_ankiet
         id_vars = [c for c in df_with_ids.columns if c not in valid_question_cols]
 
         df_melted = df_with_ids.melt(
-            #id_vars=id_vars,
             id_vars=['AnkietaID'],
             value_vars=valid_question_cols,
             var_name='Pytanie',
             value_name='Ocena'
         )
         
-        #print(f"    Przed filtrowaniem: {len(df_melted)} rekordów")
-
         df_melted = df_melted.merge(dim_pytania[['Pytanie', 'PytanieID']],on='Pytanie', how='left')
         df_melted = df_melted.dropna(subset=['PytanieID'])
 
         df_melted['Ocena'] = (df_melted['Ocena'].astype(str).str.replace('.', ',', regex=False))
         df_melted = df_melted[df_melted['Ocena'] != 'bd']
         df_melted = df_melted.dropna(subset=['Ocena'])
-        print(f"    Po filtrowaniu: {len(df_melted)} rekordów")
         df_fact = df_melted[['AnkietaID', 'PytanieID', 'Ocena']].copy()
         fact_data_list.append(df_fact)
     

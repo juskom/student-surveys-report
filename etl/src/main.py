@@ -5,15 +5,13 @@ from config import ZAKLADY_DATA_PATH, ANKIETY_DATA_PATH, PROCESSED_DATA_PATH
 
 def main():
     print("Starting ETL process...")
-    
-    # EXTRACTION PHASE
+
     print("\nEXTRACTION PHASE")
     print("-" * 50)
 
     excel_data = load_excel_files(ANKIETY_DATA_PATH)
     zaklady_data = load_zaklady_data(ZAKLADY_DATA_PATH)
 
-    # TRANSFORMATION PHASE
     print("\nTRANSFORMATION PHASE")
     print("-" * 50)
     
