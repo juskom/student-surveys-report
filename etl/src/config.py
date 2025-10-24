@@ -1,6 +1,5 @@
 import os
 
-
 ANKIETY_DATA_PATH = "data/raw_data/ankiety"
 ZAKLADY_DATA_PATH = "data/raw_data/zakłady"
 PROCESSED_DATA_PATH = "data/transformed_data"
@@ -11,7 +10,6 @@ INSTYTUTY = {
     "IE": "Instytut Elektroenergetyki",
     "brak": "Brak przypisania do instytutu"
 }
-
 
 ZAKLADY = {
     # ISEP
