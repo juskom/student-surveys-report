@@ -34,10 +34,10 @@ Aplikacja ETL (Extract, Transform, Load) służąca do:
 - `dim_struktura` - Struktura organizacyjna (instytuty, zakłady)
 - `dim_prowadzacy` - Prowadzący zajęcia
 - `dim_przedmiot` - Przedmioty
-- `dim_pytania` - Pytania ankietowe
+- `dim_pytanie` - Pytania ankietowe
 - `dim_semestr` - Semestry akademickie
-- `dim_ankiety` - Dane dotyczące ankietyzacji
-- `fact_ankiety` - Wyniki dla poszczególnych pytań ankietowych
+- `dim_ankieta` - Dane dotyczące ankietyzacji
+- `fact_oceny` - Wyniki dla poszczególnych pytań ankietowych
 
 
 

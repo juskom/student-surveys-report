@@ -1,6 +1,5 @@
 import os
 import pandas as pd
-from datetime import datetime
 
 def save_all_dimensions(dimensions, output_path):
     transformed_data_path = os.path.join(output_path)
@@ -68,10 +67,10 @@ def filter_data_for_institute(dimensions, institute_code):
     dim_struktura = dimensions['dim_struktura']
     dim_prowadzacy = dimensions['dim_prowadzacy']
     dim_przedmiot = dimensions['dim_przedmiot']
-    dim_pytania = dimensions['dim_pytania']
+    dim_pytania = dimensions['dim_pytanie']
     dim_semestr = dimensions['dim_semestr']
-    dim_ankiety = dimensions['dim_ankiety']
-    fact_ankiety = dimensions.get('fact_ankiety')
+    dim_ankiety = dimensions['dim_ankieta']
+    fact_ankiety = dimensions.get('fact_oceny')
 
     institute_struktura = dim_struktura[dim_struktura['InstytutSkrot'] == institute_code].copy()
 
@@ -102,10 +101,10 @@ def filter_data_for_institute(dimensions, institute_code):
         'dim_struktura': institute_struktura,
         'dim_prowadzacy': institute_prowadzacy,
         'dim_przedmiot': institute_przedmiot,
-        'dim_pytania': institute_pytania,
+        'dim_pytanie': institute_pytania,
         'dim_semestr': institute_semestr,
-        'dim_ankiety': institute_ankiety,
-        'fact_ankiety': institute_fact
+        'dim_ankieta': institute_ankiety,
+        'fact_oceny': institute_fact
     }
 
    

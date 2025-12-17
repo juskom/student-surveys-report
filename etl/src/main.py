@@ -28,10 +28,10 @@ def main():
         'dim_struktura': dim_struktura,
         'dim_prowadzacy': dim_prowadzacy,
         'dim_przedmiot': dim_przedmiot,
-        'dim_pytania': dim_pytania,
+        'dim_pytanie': dim_pytania,
         'dim_semestr': dim_semestr,
-        'dim_ankiety': dim_ankiety,
-        'fact_ankiety': fact_ankiety
+        'dim_ankieta': dim_ankiety,
+        'fact_oceny': fact_ankiety
     }
    
     print("\nLOADING PHASE")
