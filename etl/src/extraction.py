@@ -2,9 +2,17 @@ import pandas as pd
 import glob
 import os
 import re
+from utils import clean_surname
 
 def load_excel_files(raw_data_path):
     excel_files = glob.glob(os.path.join(raw_data_path, "*.xlsx"))
+    
+    excel_files = [f for f in excel_files if not os.path.basename(f).startswith('~$')]
+
+    if not excel_files:
+        raise FileNotFoundError(f"Nie znaleziono plików ankiet w katalogu: {raw_data_path}")
+    
+    print(f"\nZnaleziono {len(excel_files)} plików ankiet do przetworzenia")
 
     all_prowadzacy_rows = []
     all_przedmiot_rows = []
@@ -24,6 +32,27 @@ def load_excel_files(raw_data_path):
             all_przedmiot_rows.extend(file_data['przedmioty'])
             questions_set.update(file_data['questions'])
             raw_files_data.append(file_data)
+        else:
+            print(f"Skipped: Plik nie zawiera danych lub jest uszkodzony")
+ 
+ 
+    if not raw_files_data:
+        raise ValueError("Brak danych w plikach Excel - nie znaleziono prawidłowych arkuszy z ankietami")
+    
+    if not all_prowadzacy_rows:
+        raise ValueError("Brak danych prowadzących - sprawdź czy pliki zawierają kolumny: 'Prowadzący', 'Nazwisko'")
+    
+    if not all_przedmiot_rows:
+        raise ValueError("Brak danych przedmiotów - sprawdź czy pliki zawierają kolumny: 'Nazwa przedmiotu', 'Kod zajęć'")
+    
+    if not questions_set:
+        raise ValueError("Brak pytań ankietowych - sprawdź czy pliki zawierają kolumny z numerami pytań")
+    
+    print(f"\nZaładowano dane:")
+    print(f"  - {len(all_prowadzacy_rows)} rekordów prowadzących")
+    print(f"  - {len(all_przedmiot_rows)} rekordów przedmiotów")
+    print(f"  - {len(questions_set)} pytań ankietowych")
+    print(f"  - {len(raw_files_data)} plików z danymi")
     
     return {
         'prowadzacy': all_prowadzacy_rows,
@@ -55,7 +84,7 @@ def extract_metadata_from_file(file_path):
  
             content_text = first_row + " " + second_row
 
-            semester_content = re.search(r'(20\d{2}[LZ])', content_text)
+            semester_content = re.search(r'(\d{4}[LZ])', content_text)
             if semester_content:
                 metadata['semester'] = semester_content.group(1)
             
@@ -75,46 +104,77 @@ def extract_metadata_from_file(file_path):
     
     except Exception as e:
         print(f"Error reading header from {filename}: {e}")
+ 
+
+    missing_metadata = []
+    if not metadata['semester']:
+        missing_metadata.append('Cykl')
+    if not metadata['fill_condition']:
+        missing_metadata.append('Kryteria wypełnienia')
+    if not metadata['unit_code']:
+        missing_metadata.append('Kod jednostki (6-cyfrowy)')
+    if not metadata['file_type']:
+        missing_metadata.append('Typ (dawca/biorca)')
+    
+    if missing_metadata:
+        print(f"Plik '{filename}' ma uszkodzony nagłówek")
+        print(f"Brakuje metadanych: {', '.join(missing_metadata)}")
+        metadata['is_valid'] = False
+    else:
+        metadata['is_valid'] = True
     
     return metadata
 
 def process_excel_file(file_path, metadata):
+    filename = metadata['filename']
+    
+    if not metadata.get('is_valid', True):
+        return None
+    
     try:
         df_raw = pd.read_excel(file_path, skiprows=2)
         df_cleaned = df_raw.dropna(how='all')
-
-        if 'Nazwisko' in df_cleaned.columns:
-            from utils import clean_surname
-            df_cleaned['Nazwisko'] = df_cleaned['Nazwisko'].apply(clean_surname)
         
+        prowadzacy_cols = ['Nazwisko', 'Prowadzący']
+        przedmiot_cols = ['Nazwa przedmiotu', 'Kod zajęć', 'Dawca']
+        ankiety_cols = ['Rodzaj zajęć', 'Język prowadzenia zajęć', 
+                       'Liczba wypełnionych ankiet', 'Liczba studentów w grupie', 
+                       'Procent wypełnionych ankiet', 'Prowadzący', 'Kod zajęć']
+        
+        missing_cols = []
+        for col in prowadzacy_cols + przedmiot_cols + ankiety_cols:
+            if col not in df_cleaned.columns:
+                if col not in missing_cols:
+                    missing_cols.append(col)
+        
+        if missing_cols:
+            print(f"ERROR: Plik '{filename}' brakuje wymaganych kolumn: {', '.join(missing_cols)}")
+            return None
 
+        df_cleaned['Nazwisko'] = df_cleaned['Nazwisko'].apply(clean_surname)
+        
         prowadzacy_data = []
-        if all(col in df_cleaned.columns for col in ['Nazwisko', 'Prowadzący']):
-            df_prow = df_cleaned[['Nazwisko', 'Prowadzący']].dropna(how='all')
-            df_prow = df_prow[df_prow['Prowadzący'].notna()]
-            prowadzacy_data = df_prow.to_dict('records')
-        
+        df_prow = df_cleaned[prowadzacy_cols].dropna(how='all')
+        df_prow = df_prow[df_prow['Prowadzący'].notna()]
+        prowadzacy_data = df_prow.to_dict('records')
 
         przedmiot_data = []
-        if all(col in df_cleaned.columns for col in ['Nazwa przedmiotu', 'Kod zajęć', 'Dawca']):
-            df_przedmiot = df_cleaned[['Nazwa przedmiotu', 'Kod zajęć', 'Dawca']].dropna(how='all')
-            df_przedmiot = df_przedmiot[df_przedmiot['Nazwa przedmiotu'].notna()]
-            przedmiot_data = df_przedmiot.to_dict('records')
-        
+        df_przedmiot = df_cleaned[przedmiot_cols].dropna(how='all')
+        df_przedmiot = df_przedmiot[df_przedmiot['Nazwa przedmiotu'].notna()]
+        przedmiot_data = df_przedmiot.to_dict('records')
 
         question_cols = [col for col in df_cleaned.columns 
                         if re.match(r'^\d+\s', str(col)) or str(col).strip().isdigit()]
         
         if not question_cols:
+            print(f"ERROR: Plik '{filename}' nie zawiera żadnych kolumn z pytaniami")
             return None
 
-        ankiety_cols = ['Rodzaj zajęć', 'Język prowadzenia zajęć', 
-                       'Liczba wypełnionych ankiet', 'Liczba studentów w grupie', 
-                       'Procent wypełnionych ankiet', 'Prowadzący', 'Kod zajęć']
-        
         relevant_cols = ankiety_cols + question_cols
         relevant_cols = [col for col in relevant_cols if col in df_cleaned.columns]
         df_subset = df_cleaned[relevant_cols].copy()
+        
+        # print(f"Loaded: {len(prowadzacy_data)} prowadzący, {len(przedmiot_data)} przedmioty, {len(question_cols)} pytania")
         
         return {
             'metadata': metadata,
@@ -137,12 +197,19 @@ def load_zaklady_data(raw_data_path):
         'ZWNIKE': 'zwnike.csv'
     }
     
+    if not os.path.exists(raw_data_path):
+        print(f"\nWARNING: Katalog zakładów nie istnieje: {raw_data_path}")
+        return {}
+    
     pracownicy_zaklady = {}
+    missing_files = []
+    found_files = 0
     
     for zaklad_skrot, filename in zaklady_files.items():
         file_path = os.path.join(raw_data_path, filename)
         
         if os.path.exists(file_path):
+            found_files += 1
             try:
                 df_zaklad = pd.read_csv(file_path)
                 print(f"  Loaded {filename}: {len(df_zaklad)} records")
@@ -167,6 +234,16 @@ def load_zaklady_data(raw_data_path):
             except Exception as e:
                 print(f"  Error loading {filename}: {e}")
         else:
-            print(f"  File not found: {filename}")
+            missing_files.append(filename)
+            print(f"  WARNING: File not found: {filename}")
+
+   
+    if missing_files:
+        print(f"\nWARNING: Brakuje {len(missing_files)}/{len(zaklady_files)} plików zakładów:")
+        for mf in missing_files:
+            print(f"  - {mf}")
+        print(f"Proces kontynuowany z {found_files} dostępnymi plikami.")
+    else:
+        print(f"\nZaładowano wszystkie {found_files} plików zakładów pomyślnie.")
     
     return pracownicy_zaklady

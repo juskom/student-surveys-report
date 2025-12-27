@@ -9,7 +9,13 @@ def main():
     print("\nEXTRACTION PHASE")
     print("-" * 50)
 
-    excel_data = load_excel_files(ANKIETY_DATA_PATH)
+    try:
+        excel_data = load_excel_files(ANKIETY_DATA_PATH)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"\nERROR: {e}")
+        print("Proces ETL przerwany.\n")
+        return
+    
     zaklady_data = load_zaklady_data(ZAKLADY_DATA_PATH)
 
     print("\nTRANSFORMATION PHASE")
@@ -21,8 +27,8 @@ def main():
     dim_przedmiot = build_dim_przedmiot(excel_data['przedmioty'])
     dim_pytania = build_dim_pytania(excel_data['questions'])
     dim_semestr = build_dim_semestr(excel_data['raw_files'])
-    dim_ankiety = build_dim_ankiety(excel_data['raw_files'], dim_prowadzacy, dim_przedmiot, dim_semestr)
-    fact_ankiety = build_fact_ankiety(excel_data['raw_files'], dim_prowadzacy, dim_przedmiot, dim_ankiety,dim_pytania, dim_semestr)
+    dim_ankiety, enriched_files = build_dim_ankiety(excel_data['raw_files'], dim_prowadzacy, dim_przedmiot, dim_semestr)
+    fact_ankiety = build_fact_ankiety(enriched_files, dim_pytania)
 
     dimensions = {
         'dim_struktura': dim_struktura,

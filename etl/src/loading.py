@@ -74,9 +74,9 @@ def filter_data_for_institute(dimensions, institute_code):
 
     institute_struktura = dim_struktura[dim_struktura['InstytutSkrot'] == institute_code].copy()
 
-    institute_zaklady = institute_struktura['ZakladSkrot'].tolist()
+    institute_struktura_ids = institute_struktura['StrukturaID'].tolist()
 
-    institute_prowadzacy = dim_prowadzacy[dim_prowadzacy['Zakład'].isin(institute_zaklady)].copy()
+    institute_prowadzacy = dim_prowadzacy[dim_prowadzacy['StrukturaID'].isin(institute_struktura_ids)].copy()
 
     institute_prowadzacy_ids = institute_prowadzacy['ProwadzacyID'].tolist()
 

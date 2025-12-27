@@ -32,45 +32,53 @@ def build_dim_prowadzacy(prowadzacy_data, pracownicy_zaklady, dim_struktura):
 
     df_all_prow = pd.DataFrame(prowadzacy_data)
     
-    df_all_prow = df_all_prow.drop_duplicates()
-    print(f"  Unique instructor records: {len(df_all_prow)}")
+    #df_all_prow = df_all_prow.drop_duplicates()
+    #print(f"  Unique instructor records: {len(df_all_prow)}")
 
     df_all_prow[["Tytuł", "Nazwisko", "Imiona", "Nazwisko Imiona"]] = df_all_prow.apply(
         split_prowadzacy, axis=1, result_type="expand"
     )
+
+    df_all_prow = df_all_prow.drop_duplicates(subset=["Nazwisko Imiona"])
+    print(f"  Unique instructor records: {len(df_all_prow)}")
     
     df_all_prow = df_all_prow.reset_index(drop=True)
     df_all_prow["ProwadzacyID"] = range(1, len(df_all_prow) + 1)
     
     dim_prowadzacy = df_all_prow[["ProwadzacyID", "Prowadzący", "Tytuł", "Nazwisko", "Imiona", "Nazwisko Imiona"]].copy()
 
-    dim_prowadzacy = assign_zaklady_to_prowadzacy(dim_prowadzacy, pracownicy_zaklady)
+    dim_prowadzacy = assign_zaklady_to_prowadzacy(dim_prowadzacy, pracownicy_zaklady, dim_struktura)
 
     print(f"dim_prowadzacy created with {len(dim_prowadzacy)} instructors")
     return dim_prowadzacy
 
-def assign_zaklady_to_prowadzacy(dim_prowadzacy, pracownicy_zaklady):
+def assign_zaklady_to_prowadzacy(dim_prowadzacy, pracownicy_zaklady, dim_struktura):
     print("Assigning zakłady to prowadzacy...")
     
-    dim_prowadzacy['Zakład'] = None
+    dim_prowadzacy['StrukturaID'] = None
     matched_count = 0
     
     for idx, row in dim_prowadzacy.iterrows():
-        nazwisko = str(row['Nazwisko']).strip().lower() if pd.notna(row['Nazwisko']) else ''
-        imie = str(row['Imiona']).strip().lower() if pd.notna(row['Imiona']) else ''
+        key = str(row['Nazwisko Imiona']).strip().lower() if pd.notna(row['Nazwisko Imiona']) else ''
     
-        zaklad_found = None
-
-        if nazwisko and imie:
-            key = f"{nazwisko} {imie}"
+        if key:
             if key in pracownicy_zaklady:
-                zaklad_found = pracownicy_zaklady[key]
-                dim_prowadzacy.at[idx, 'Zakład'] = zaklad_found
+                zaklad_skrot = pracownicy_zaklady[key]
                 matched_count += 1
-
             else:
-                dim_prowadzacy.at[idx, 'Zakład'] = 'brak'
+                zaklad_skrot = 'brak'
                 print(f"No match by full name: {key}")
+        else:
+            zaklad_skrot = 'brak'
+        
+        struktura_match = dim_struktura[dim_struktura['ZakladSkrot'] == zaklad_skrot]
+        if not struktura_match.empty:
+            dim_prowadzacy.at[idx, 'StrukturaID'] = struktura_match.iloc[0]['StrukturaID']
+        else:
+            print(f"Warning: No StrukturaID found for zakład '{zaklad_skrot}'")
+            brak_match = dim_struktura[dim_struktura['ZakladSkrot'] == 'brak']
+            if not brak_match.empty:
+                dim_prowadzacy.at[idx, 'StrukturaID'] = brak_match.iloc[0]['StrukturaID']
 
     print(f"  Matched {matched_count}/{len(dim_prowadzacy)} prowadzacy to zaklady")
 
@@ -217,9 +225,10 @@ def build_dim_ankiety(raw_files_data, dim_prowadzacy, dim_przedmiot, dim_semestr
     
     if not raw_files_data:
         print("No survey data found!")
-        return pd.DataFrame()
+        return pd.DataFrame(), []
     
     ankieta_records = []
+    enriched_files = []
     ankieta_id_counter = 1
 
     for file_data in raw_files_data:
@@ -234,15 +243,16 @@ def build_dim_ankiety(raw_files_data, dim_prowadzacy, dim_przedmiot, dim_semestr
         df_with_ids = df_subset.merge(dim_prowadzacy[['Prowadzący', 'ProwadzacyID']], on='Prowadzący', how='left'
                     ).merge(dim_przedmiot[['Kod zajęć', 'PrzedmiotID']], on='Kod zajęć', how='left')
 
-        df_with_ids = df_with_ids.dropna(subset=['ProwadzacyID', 'PrzedmiotID'])
         
         if df_with_ids.empty:
             continue
 
         df_with_ids = df_with_ids.dropna(subset=['ProwadzacyID', 'PrzedmiotID'])
+
+        df_with_ids['AnkietaID'] = range(ankieta_id_counter, ankieta_id_counter + len(df_with_ids))
         
         df_ankieta = pd.DataFrame({
-            'AnkietaID': range(ankieta_id_counter, ankieta_id_counter + len(df_with_ids)),
+            'AnkietaID': df_with_ids['AnkietaID'],
             'Rodzaj zajęć': df_with_ids['Rodzaj zajęć'],
             'Język prowadzenia zajęć': df_with_ids['Język prowadzenia zajęć'],
             'Liczba wypełnionych ankiet': df_with_ids['Liczba wypełnionych ankiet'],
@@ -262,60 +272,75 @@ def build_dim_ankiety(raw_files_data, dim_prowadzacy, dim_przedmiot, dim_semestr
         
         ankieta_records.append(df_ankieta)
         ankieta_id_counter += len(df_with_ids)
+        enriched_files.append({
+            'df_with_ids': df_with_ids,
+            'questions': file_data['questions']
+        })
     
     if ankieta_records:
         dim_ankiety = pd.concat(ankieta_records, ignore_index=True)
         print(f"dim_ankiety created with {len(dim_ankiety)} records")     
 
-        return dim_ankiety
+        return dim_ankiety, enriched_files
     else:
         print("No ankiety data found!")
-        return pd.DataFrame()
+        return pd.DataFrame(), []
     
 
-def build_fact_ankiety(raw_files_data, dim_prowadzacy, dim_przedmiot, dim_ankiety, dim_pytania, dim_semestr):
+#def build_fact_ankiety(raw_files_data, dim_prowadzacy, dim_przedmiot, dim_ankiety, dim_pytania, dim_semestr):
+def build_fact_ankiety(enriched_files, dim_pytania):
     print("Creating fact_ankiety...")
     
-    if not raw_files_data or dim_ankiety.empty:
-        print("No fact data to process!")
-        return pd.DataFrame()
+    # if not raw_files_data or dim_ankiety.empty:
+    #     print("No fact data to process!")
+    #     return pd.DataFrame()
     
     fact_data_list = []
 
-    ankiety_keys = dim_ankiety[['AnkietaID','ProwadzacyID', 'PrzedmiotID', 'SemestrID', 'Rodzaj zajęć']]
+    #ankiety_keys = dim_ankiety[['AnkietaID','ProwadzacyID', 'PrzedmiotID', 'SemestrID', 'Rodzaj zajęć']]
     
-    for file_data in raw_files_data:
-        question_cols = file_data['questions']
-        df_subset = file_data['df_subset']
+    # for file_data in raw_files_data:
+    #     question_cols = file_data['questions']
+    #     df_subset = file_data['df_subset']
         
-        valid_question_cols = [col for col in question_cols if col in df_subset.columns]
-        if not valid_question_cols:
-            continue
+    #     valid_question_cols = [col for col in question_cols if col in df_subset.columns]
+    #     if not valid_question_cols:
+    #         continue
 
-        semester = file_data['metadata']['semester']
-        semester_match = dim_semestr[dim_semestr['Cykl'] == semester]
-        semester_id = semester_match.iloc[0]['SemestrID'] if not semester_match.empty else None
+    #     semester = file_data['metadata']['semester']
+    #     semester_match = dim_semestr[dim_semestr['Cykl'] == semester]
+    #     semester_id = semester_match.iloc[0]['SemestrID'] if not semester_match.empty else None
 
-        df_with_ids = df_subset.merge(dim_prowadzacy[['Prowadzący', 'ProwadzacyID']], on='Prowadzący', how='left'
-            ).merge(dim_przedmiot[['Kod zajęć', 'PrzedmiotID']], on='Kod zajęć', how='left')
+    #     df_with_ids = df_subset.merge(dim_prowadzacy[['Prowadzący', 'ProwadzacyID']], on='Prowadzący', how='left'
+    #         ).merge(dim_przedmiot[['Kod zajęć', 'PrzedmiotID']], on='Kod zajęć', how='left')
 
-        df_with_ids['SemestrID'] = semester_id
-        df_with_ids = df_with_ids.merge(ankiety_keys, on=['ProwadzacyID', 'PrzedmiotID', 'SemestrID', 'Rodzaj zajęć'], how='left')
+    #     df_with_ids['SemestrID'] = semester_id
+    #     df_with_ids = df_with_ids.merge(ankiety_keys, on=['ProwadzacyID', 'PrzedmiotID', 'SemestrID', 'Rodzaj zajęć'], how='left')
 
 
-        df_with_ids = df_with_ids.dropna(subset=['AnkietaID'])
+    #     df_with_ids = df_with_ids.dropna(subset=['AnkietaID'])
         
-        if df_with_ids.empty:
-            continue
-        id_vars = [c for c in df_with_ids.columns if c not in valid_question_cols]
+    #     if df_with_ids.empty:
+    #         continue
+    #     id_vars = [c for c in df_with_ids.columns if c not in valid_question_cols]
 
+    #     df_melted = df_with_ids.melt(
+    #         id_vars=['AnkietaID'],
+    #         value_vars=valid_question_cols,
+    #         var_name='Pytanie',
+    #         value_name='Ocena'
+    #     )
+    for enriched_data in enriched_files:
+        df_with_ids = enriched_data['df_with_ids']
+        question_cols = enriched_data['questions']
+        
         df_melted = df_with_ids.melt(
             id_vars=['AnkietaID'],
-            value_vars=valid_question_cols,
+            value_vars=question_cols,
             var_name='Pytanie',
             value_name='Ocena'
         )
-        
+
         df_melted = df_melted.merge(dim_pytania[['Pytanie', 'PytanieID']],on='Pytanie', how='left')
         df_melted = df_melted.dropna(subset=['PytanieID'])
 
